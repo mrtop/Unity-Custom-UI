@@ -1,12 +1,59 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Sprites;
 
 public class SuperImage : Image
 {
+    public enum SlicedAnchor
+    {
+        None = 0,
+        Upper = 1,
+        Lower = 2,
+        Middle = Upper | Lower,
+        Left = 4,
+        Right = 8,
+        Center = Left | Right,
+        //
+        // 摘要:
+        //     Text is anchored in upper left corner.
+        UpperLeft = Upper | Left,
+        //
+        // 摘要:
+        //     Text is anchored in upper side, centered horizontally.
+        UpperCenter = Upper | Center,
+        //
+        // 摘要:
+        //     Text is anchored in upper right corner.
+        UpperRight = Upper | Right,
+        //
+        // 摘要:
+        //     Text is anchored in left side, centered vertically.
+        MiddleLeft = Middle | Left,
+        //
+        // 摘要:
+        //     Text is centered both horizontally and vertically.
+        MiddleCenter = Middle | Center,
+        //
+        // 摘要:
+        //     Text is anchored in right side, centered vertically.
+        MiddleRight = Middle | Right,
+        //
+        // 摘要:
+        //     Text is anchored in lower left corner.
+        LowerLeft = Lower | Left,
+        //
+        // 摘要:
+        //     Text is anchored in lower side, centered horizontally.
+        LowerCenter = Lower | Center,
+        //
+        // 摘要:
+        //     Text is anchored in lower right corner.
+        LowerRight = Lower | Right
+    }
+
     [SerializeField] private bool m_FillKeepAngle = false;
+    [SerializeField] private bool m_SlicedKeepInner = false;
+    [SerializeField] private SlicedAnchor m_SlicedAnchor = SlicedAnchor.None;
 
     public bool fillKeepAngle
     {
@@ -15,6 +62,28 @@ public class SuperImage : Image
         {
             if (m_FillKeepAngle == value) return;
             m_FillKeepAngle = value;
+            SetVerticesDirty();
+        }
+    }
+
+    public bool slicedKeepInner
+    {
+        get { return m_SlicedKeepInner; }
+        set
+        {
+            if (m_SlicedKeepInner == value) return;
+            m_SlicedKeepInner = value;
+            SetVerticesDirty();
+        }
+    }
+
+    public SlicedAnchor slicedAnchor
+    {
+        get { return m_SlicedAnchor; }
+        set
+        {
+            if (m_SlicedAnchor == value) return;
+            m_SlicedAnchor = value;
             SetVerticesDirty();
         }
     }
@@ -33,7 +102,178 @@ public class SuperImage : Image
             GenerateFilledSprite(toFill);
             return;
         }
+        else if (type == Image.Type.Sliced)
+        {
+            GenerateSlicedSprite(toFill);
+            return;
+        }
         base.OnPopulateMesh(toFill);
+    }
+
+    private void PreserveSpriteAspectRatio(ref Rect rect, Vector2 spriteSize)
+    {
+        float num = spriteSize.x / spriteSize.y;
+        float num2 = rect.width / rect.height;
+        if (num > num2)
+        {
+            float height = rect.height;
+            rect.height = rect.width * (1f / num);
+            rect.y += (height - rect.height) * base.rectTransform.pivot.y;
+        }
+        else
+        {
+            float width = rect.width;
+            rect.width = rect.height * num;
+            rect.x += (width - rect.width) * base.rectTransform.pivot.x;
+        }
+    }
+
+    private Vector4 GetDrawingDimensions(bool shouldPreserveAspect)
+    {
+        Vector4 vector = ((activeSprite == null) ? Vector4.zero : DataUtility.GetPadding(activeSprite));
+        Vector2 spriteSize = ((activeSprite == null) ? Vector2.zero : new Vector2(activeSprite.rect.width, activeSprite.rect.height));
+        Rect rect = GetPixelAdjustedRect();
+        int num = Mathf.RoundToInt(spriteSize.x);
+        int num2 = Mathf.RoundToInt(spriteSize.y);
+        Vector4 vector2 = new Vector4(vector.x / (float)num, vector.y / (float)num2, ((float)num - vector.z) / (float)num, ((float)num2 - vector.w) / (float)num2);
+        if (shouldPreserveAspect && spriteSize.sqrMagnitude > 0f)
+        {
+            PreserveSpriteAspectRatio(ref rect, spriteSize);
+        }
+
+        return new Vector4(rect.x + rect.width * vector2.x, rect.y + rect.height * vector2.y, rect.x + rect.width * vector2.z, rect.y + rect.height * vector2.w);
+    }
+
+    private void GenerateSimpleSprite(VertexHelper vh, bool lPreserveAspect)
+    {
+        Vector4 drawingDimensions = GetDrawingDimensions(lPreserveAspect);
+        Vector4 vector = ((activeSprite != null) ? DataUtility.GetOuterUV(activeSprite) : Vector4.zero);
+        Color color = this.color;
+        vh.Clear();
+        vh.AddVert(new Vector3(drawingDimensions.x, drawingDimensions.y), color, new Vector2(vector.x, vector.y));
+        vh.AddVert(new Vector3(drawingDimensions.x, drawingDimensions.w), color, new Vector2(vector.x, vector.w));
+        vh.AddVert(new Vector3(drawingDimensions.z, drawingDimensions.w), color, new Vector2(vector.z, vector.w));
+        vh.AddVert(new Vector3(drawingDimensions.z, drawingDimensions.y), color, new Vector2(vector.z, vector.y));
+        vh.AddTriangle(0, 1, 2);
+        vh.AddTriangle(2, 3, 0);
+    }
+
+    private void GenerateSlicedSprite(VertexHelper toFill)
+    {
+        if (!hasBorder)
+        {
+            GenerateSimpleSprite(toFill, lPreserveAspect: false);
+            return;
+        }
+
+        Vector4 vector;
+        Vector4 vector2;
+        Vector4 vector3;
+        Vector4 vector4;
+        Vector4 vector5;
+        if (activeSprite != null)
+        {
+            vector = DataUtility.GetOuterUV(activeSprite);
+            vector2 = DataUtility.GetInnerUV(activeSprite);
+            vector3 = DataUtility.GetPadding(activeSprite);
+            vector4 = activeSprite.border;
+            if (m_SlicedAnchor != SlicedAnchor.None)
+            {
+                var rect = activeSprite.rect;
+                var halfSize = new Vector2(rect.width * 0.5f, rect.height * 0.5f);
+                vector5 = new Vector4(vector4.x - halfSize.x, vector4.y - halfSize.y, halfSize.x - vector4.z, halfSize.y - vector4.w);
+            }
+            else
+            {
+                vector5 = Vector4.zero;
+            }
+        }
+        else
+        {
+            vector = Vector4.zero;
+            vector2 = Vector4.zero;
+            vector3 = Vector4.zero;
+            vector4 = Vector4.zero;
+            vector5 = Vector4.zero;
+        }
+
+        Rect pixelAdjustedRect = GetPixelAdjustedRect();
+        Vector4 adjustedBorders = GetAdjustedBorders(vector4 / multipliedPixelsPerUnit, pixelAdjustedRect);
+        vector3 /= multipliedPixelsPerUnit;
+        s_VertScratch[0] = new Vector2(vector3.x, vector3.y);
+        s_VertScratch[3] = new Vector2(pixelAdjustedRect.width - vector3.z, pixelAdjustedRect.height - vector3.w);
+
+        if (m_SlicedAnchor == SlicedAnchor.None)
+        {
+            s_VertScratch[1].x = adjustedBorders.x;
+            s_VertScratch[1].y = adjustedBorders.y;
+            s_VertScratch[2].x = pixelAdjustedRect.width - adjustedBorders.z;
+            s_VertScratch[2].y = pixelAdjustedRect.height - adjustedBorders.w;
+        }
+        else
+        {
+            vector5 = GetAdjustedBorders(vector5 / multipliedPixelsPerUnit, pixelAdjustedRect);
+            var pixelAdjustedHalfSize = new Vector2(pixelAdjustedRect.width * 0.5f, pixelAdjustedRect.height * 0.5f);
+            if ((m_SlicedAnchor & SlicedAnchor.Left) == SlicedAnchor.Left)
+            {
+                s_VertScratch[2].x = vector5.z + pixelAdjustedHalfSize.x;
+            }
+            else
+            {
+                s_VertScratch[2].x = pixelAdjustedRect.width - adjustedBorders.z;
+            }
+            if ((m_SlicedAnchor & SlicedAnchor.Right) == SlicedAnchor.Right)
+            {
+                s_VertScratch[1].x = vector5.x + pixelAdjustedHalfSize.x;
+            }
+            else
+            {
+                s_VertScratch[1].x = adjustedBorders.x;
+            }
+            if ((m_SlicedAnchor & SlicedAnchor.Lower) == SlicedAnchor.Lower)
+            {
+                s_VertScratch[2].y = vector5.w + pixelAdjustedHalfSize.y;
+            }
+            else
+            {
+                s_VertScratch[2].y = pixelAdjustedRect.height - adjustedBorders.w;
+            }
+            if ((m_SlicedAnchor & SlicedAnchor.Upper) == SlicedAnchor.Upper)
+            {
+                s_VertScratch[1].y = vector5.y + pixelAdjustedHalfSize.y;
+            }
+            else
+            {
+                s_VertScratch[1].y = adjustedBorders.y;
+            }
+        }
+        
+        for (int i = 0; i < 4; i++)
+        {
+            s_VertScratch[i].x += pixelAdjustedRect.x;
+            s_VertScratch[i].y += pixelAdjustedRect.y;
+        }
+
+        s_UVScratch[0] = new Vector2(vector.x, vector.y);
+        s_UVScratch[1] = new Vector2(vector2.x, vector2.y);
+        s_UVScratch[2] = new Vector2(vector2.z, vector2.w);
+        s_UVScratch[3] = new Vector2(vector.z, vector.w);
+        toFill.Clear();
+        for (int j = 0; j < 3; j++)
+        {
+            int num = j + 1;
+            for (int k = 0; k < 3; k++)
+            {
+                if (fillCenter || j != 1 || k != 1)
+                {
+                    int num2 = k + 1;
+                    if (!(s_VertScratch[num].x - s_VertScratch[j].x <= 0f) && !(s_VertScratch[num2].y - s_VertScratch[k].y <= 0f))
+                    {
+                        AddQuad(toFill, new Vector2(s_VertScratch[j].x, s_VertScratch[k].y), new Vector2(s_VertScratch[num].x, s_VertScratch[num2].y), color, new Vector2(s_UVScratch[j].x, s_UVScratch[k].y), new Vector2(s_UVScratch[num].x, s_UVScratch[num2].y));
+                    }
+                }
+            }
+        }
     }
 
     private Vector4 GetAdjustedBorders(Vector4 border, Rect adjustedRect)

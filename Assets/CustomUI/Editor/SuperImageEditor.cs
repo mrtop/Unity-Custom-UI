@@ -20,6 +20,7 @@ public class SuperImageEditor : GraphicEditor
     SerializedProperty m_PreserveAspect;
     SerializedProperty m_UseSpriteMesh;
     SerializedProperty m_FillKeepAngle;
+    SerializedProperty m_SlicedAnchor;
     GUIContent m_SpriteContent;
     GUIContent m_SpriteTypeContent;
     GUIContent m_ClockwiseContent;
@@ -47,6 +48,7 @@ public class SuperImageEditor : GraphicEditor
         m_PreserveAspect        = serializedObject.FindProperty("m_PreserveAspect");
         m_UseSpriteMesh         = serializedObject.FindProperty("m_UseSpriteMesh");
         m_FillKeepAngle         = serializedObject.FindProperty("m_FillKeepAngle");
+        m_SlicedAnchor         = serializedObject.FindProperty("m_SlicedAnchor");
 
         m_ShowType = new AnimBool(m_Sprite.objectReferenceValue != null);
         m_ShowType.valueChanged.AddListener(Repaint);
@@ -168,6 +170,7 @@ public class SuperImageEditor : GraphicEditor
 
             if (EditorGUILayout.BeginFadeGroup(m_ShowSliced.faded))
             {
+                EditorGUILayout.PropertyField(m_SlicedAnchor);
                 if (image.sprite != null && !image.hasBorder)
                     EditorGUILayout.HelpBox("This Image doesn't have a border.", MessageType.Warning);
             }
